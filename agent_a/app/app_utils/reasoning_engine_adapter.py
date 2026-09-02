@@ -100,43 +100,29 @@ def attach_reasoning_engine_routes(app: FastAPI) -> None:
             )
         return getattr(rt, class_method)
 
-    def _extract_and_inject_auth(request: Request, kwargs: dict) -> None:
-        auth_header = (
-            request.headers.get("authorization")
-            or request.headers.get("x-server-token")
-            or request.headers.get("x-forwarded-authorization")
-            or request.headers.get("x-goog-authenticated-user-jwt")
+    def _prepare_call_kwargs(method, kwargs: dict) -> dict:
+        sig = inspect.signature(method)
+        has_var_keyword = any(
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
         )
-        # In ADK 2.0 Runner.run_async takes state_delta, not session_state
-        state = kwargs.pop("session_state", None) or kwargs.pop("state_delta", None) or {}
-        if not isinstance(state, dict):
-            state = {}
+        if "user_id" in sig.parameters or has_var_keyword:
+            kwargs.setdefault("user_id", "default_user")
 
-        if auth_header:
-            token_val = (
-                auth_header[7:].strip()
-                if auth_header.lower().startswith("bearer ")
-                else auth_header.strip()
-            )
-            state.setdefault("oauth_token", token_val)
-            state.setdefault("entra_oauth_auth", token_val)
-            state.setdefault("user:entra_oauth_auth", token_val)
-
-        if state:
-            kwargs["state_delta"] = state
+        if has_var_keyword:
+            return kwargs
+        return {k: v for k, v in kwargs.items() if k in sig.parameters}
 
     @app.post("/api/stream_reasoning_engine")
     async def stream_query(request: Request) -> responses.StreamingResponse:
         body = await request.json()
         method = resolve_method(body.get("class_method"), streaming=True)
         kwargs = dict(body.get("input") or {})
-        kwargs.setdefault("user_id", "default_user")
-        _extract_and_inject_auth(request, kwargs)
+        call_kwargs = _prepare_call_kwargs(method, kwargs)
 
         stream = (
-            await method(**kwargs)
+            await method(**call_kwargs)
             if inspect.iscoroutinefunction(method)
-            else method(**kwargs)
+            else method(**call_kwargs)
         )
 
         async def generator():
@@ -156,13 +142,12 @@ def attach_reasoning_engine_routes(app: FastAPI) -> None:
         body = await request.json()
         method = resolve_method(body.get("class_method"), streaming=False)
         kwargs = dict(body.get("input") or {})
-        kwargs.setdefault("user_id", "default_user")
-        _extract_and_inject_auth(request, kwargs)
+        call_kwargs = _prepare_call_kwargs(method, kwargs)
 
         if inspect.iscoroutinefunction(method):
-            output = await method(**kwargs)
+            output = await method(**call_kwargs)
         else:
-            output = await run_in_threadpool(method, **kwargs)
+            output = await run_in_threadpool(method, **call_kwargs)
         return responses.JSONResponse(
             content=encoders.jsonable_encoder({"output": output})
         )
