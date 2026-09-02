@@ -53,8 +53,12 @@ SUBAGENT_REGISTRY: list[SubAgentRegistration] = [
 ]
 
 
-def extract_token_from_state(state: dict[str, Any]) -> str | None:
+def extract_token_from_state(state: Any) -> str | None:
     """Extract Entra ID OAuth token from ADK / Gemini Enterprise session state."""
+    if state is None:
+        return None
+    state_dict = state.to_dict() if hasattr(state, "to_dict") else (dict(state) if isinstance(state, dict) else {})
+
     # 1. Exact candidate keys (matching auth ID 'entra_oauth_auth' and common conventions)
     candidate_keys = (
         "user:entra_oauth_auth",
@@ -71,12 +75,12 @@ def extract_token_from_state(state: dict[str, Any]) -> str | None:
         "bearer_token",
     )
     for key in candidate_keys:
-        val = state.get(key)
+        val = state_dict.get(key)
         if isinstance(val, str) and val.strip():
             return val.strip()
 
     # 2. Check nested authorizations structure if present
-    auths = state.get("authorizations")
+    auths = state_dict.get("authorizations")
     if isinstance(auths, dict):
         for sub_key in ("entra_oauth_auth", "entra-oauth-auth", "default"):
             sub_val = auths.get(sub_key)
@@ -88,7 +92,7 @@ def extract_token_from_state(state: dict[str, Any]) -> str | None:
                         return sub_val[k].strip()
 
     # 3. Dynamic scan for any user:* key or JWT-shaped string
-    for k, v in state.items():
+    for k, v in state_dict.items():
         if isinstance(v, str):
             v_stripped = v.strip()
             if (k.startswith("user:") or "token" in k or "auth" in k) and v_stripped:

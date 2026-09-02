@@ -1,0 +1,168 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Serve the reasoning_engine ``{class_method, input}`` contract over HTTP.
+
+Exists to guarantee support for the Vertex AI Console Playground and Gemini
+Enterprise (via ADK registration), which both invoke the engine through this
+contract. Agent Engine forwards calls to ``/api/reasoning_engine`` (sync) and
+``/api/stream_reasoning_engine`` (streaming); dispatch is limited to the
+:class:`AdkApp` ``register_operations()`` methods so the wire output matches a
+packaged Agent Engine.
+"""
+
+import inspect
+import json
+import logging
+
+from agentplatform.agent_engines.templates.adk import AdkApp
+from fastapi import FastAPI, HTTPException, Request, encoders, responses
+from starlette.concurrency import iterate_in_threadpool, run_in_threadpool
+
+from app.app_utils import services
+
+logger = logging.getLogger(__name__)
+
+
+def _no_op_instrumentor_builder(project_id: str) -> None:
+    """No-op so set_up() keeps the startup instrumentor and generate_content spans."""
+    return None
+
+
+def attach_reasoning_engine_routes(app: FastAPI) -> None:
+    """Register reasoning_engine routes that dispatch to an AdkApp."""
+    runtime: AdkApp | None = None
+    streaming_methods: set[str] = set()
+    sync_methods: set[str] = set()
+
+    def get_runtime() -> AdkApp:
+        nonlocal runtime, streaming_methods, sync_methods
+        if runtime is None:
+            from app.agent import app as adk_app
+
+            # Reuse the process-wide services so sessions created here are
+            # visible across the application.
+            runtime = AdkApp(
+                app=adk_app,
+                session_service_builder=services.get_session_service,
+                artifact_service_builder=services.get_artifact_service,
+                instrumentor_builder=_no_op_instrumentor_builder,
+            )
+            runtime.set_up()
+            operations = runtime.register_operations()
+            streaming_methods = set(operations.get("stream", [])) | set(
+                operations.get("async_stream", [])
+            )
+            sync_methods = set(operations.get("", [])) | set(
+                operations.get("async", [])
+            )
+        return runtime
+
+    def resolve_method(class_method: str | None, *, streaming: bool):
+        rt = get_runtime()
+        allowed = streaming_methods if streaming else sync_methods
+        if not class_method:
+            if streaming:
+                class_method = (
+                    "async_stream_query"
+                    if "async_stream_query" in allowed
+                    else (
+                        "stream_query"
+                        if "stream_query" in allowed
+                        else next(iter(allowed), "")
+                    )
+                )
+            else:
+                class_method = (
+                    "async_query"
+                    if "async_query" in allowed
+                    else (
+                        "query"
+                        if "query" in allowed
+                        else next(iter(allowed), "")
+                    )
+                )
+        if not class_method or class_method not in allowed:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Unsupported reasoning_engine method: {class_method!r}",
+            )
+        return getattr(rt, class_method)
+
+    def _extract_and_inject_auth(request: Request, kwargs: dict) -> None:
+        auth_header = (
+            request.headers.get("authorization")
+            or request.headers.get("x-server-token")
+            or request.headers.get("x-forwarded-authorization")
+            or request.headers.get("x-goog-authenticated-user-jwt")
+        )
+        # In ADK 2.0 Runner.run_async takes state_delta, not session_state
+        state = kwargs.pop("session_state", None) or kwargs.pop("state_delta", None) or {}
+        if not isinstance(state, dict):
+            state = {}
+
+        if auth_header:
+            token_val = (
+                auth_header[7:].strip()
+                if auth_header.lower().startswith("bearer ")
+                else auth_header.strip()
+            )
+            state.setdefault("oauth_token", token_val)
+            state.setdefault("entra_oauth_auth", token_val)
+            state.setdefault("user:entra_oauth_auth", token_val)
+
+        if state:
+            kwargs["state_delta"] = state
+
+    @app.post("/api/stream_reasoning_engine")
+    async def stream_query(request: Request) -> responses.StreamingResponse:
+        body = await request.json()
+        method = resolve_method(body.get("class_method"), streaming=True)
+        kwargs = dict(body.get("input") or {})
+        kwargs.setdefault("user_id", "default_user")
+        _extract_and_inject_auth(request, kwargs)
+
+        stream = (
+            await method(**kwargs)
+            if inspect.iscoroutinefunction(method)
+            else method(**kwargs)
+        )
+
+        async def generator():
+            if hasattr(stream, "__aiter__"):
+                async for event in stream:
+                    yield json.dumps(encoders.jsonable_encoder(event)) + "\n"
+            else:
+                async for event in iterate_in_threadpool(stream):
+                    yield json.dumps(encoders.jsonable_encoder(event)) + "\n"
+
+        return responses.StreamingResponse(
+            content=generator(), media_type="application/json"
+        )
+
+    @app.post("/api/reasoning_engine")
+    async def query(request: Request) -> responses.JSONResponse:
+        body = await request.json()
+        method = resolve_method(body.get("class_method"), streaming=False)
+        kwargs = dict(body.get("input") or {})
+        kwargs.setdefault("user_id", "default_user")
+        _extract_and_inject_auth(request, kwargs)
+
+        if inspect.iscoroutinefunction(method):
+            output = await method(**kwargs)
+        else:
+            output = await run_in_threadpool(method, **kwargs)
+        return responses.JSONResponse(
+            content=encoders.jsonable_encoder({"output": output})
+        )

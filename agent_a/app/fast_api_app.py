@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from google.adk.cli.fast_api import get_fast_api_app
 
 from app.app_utils import services
+from app.app_utils.reasoning_engine_adapter import attach_reasoning_engine_routes
 
 load_dotenv()
 allow_origins = (
@@ -28,6 +29,8 @@ app: FastAPI = get_fast_api_app(
 )
 app.title = "agent-a"
 app.description = "Agent A - ADK Coordinator Agent"
+
+attach_reasoning_engine_routes(app)
 
 if __name__ == "__main__":
     import uvicorn
