@@ -2,12 +2,14 @@ import contextlib
 import os
 from collections.abc import AsyncIterator
 
+from a2a.server.tasks import InMemoryTaskStore
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from google.adk.cli.fast_api import get_fast_api_app
 from google.adk.runners import Runner
 
 from app.app_utils import services
+from app.app_utils.a2a import attach_a2a_routes
 from app.app_utils.reasoning_engine_adapter import attach_reasoning_engine_routes
 
 load_dotenv()
@@ -24,6 +26,7 @@ AGENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from app.agent import app as adk_app
+    from app.agent import root_agent
 
     runner = Runner(
         app=adk_app,
@@ -33,6 +36,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     app.state.runner = runner
     app.state.agent_app_name = adk_app.name
+    await attach_a2a_routes(
+        app,
+        agent=root_agent,
+        runner=runner,
+        task_store=InMemoryTaskStore(),
+        rpc_path=f"/a2a/{adk_app.name}",
+    )
     yield
 
 
