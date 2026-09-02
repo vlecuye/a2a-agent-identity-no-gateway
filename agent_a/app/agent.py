@@ -53,6 +53,53 @@ SUBAGENT_REGISTRY: list[SubAgentRegistration] = [
 ]
 
 
+def extract_token_from_state(state: dict[str, Any]) -> str | None:
+    """Extract Entra ID OAuth token from ADK / Gemini Enterprise session state."""
+    # 1. Exact candidate keys (matching auth ID 'entra_oauth_auth' and common conventions)
+    candidate_keys = (
+        "user:entra_oauth_auth",
+        "entra_oauth_auth",
+        "user:entra-oauth-auth",
+        "entra-oauth-auth",
+        "user:entra_oauth_auth:token",
+        "user:entra_oauth_auth:access_token",
+        "oauth_token",
+        "user:oauth_token",
+        "user:access_token",
+        "access_token",
+        "user:entra_id_token",
+        "bearer_token",
+    )
+    for key in candidate_keys:
+        val = state.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+
+    # 2. Check nested authorizations structure if present
+    auths = state.get("authorizations")
+    if isinstance(auths, dict):
+        for sub_key in ("entra_oauth_auth", "entra-oauth-auth", "default"):
+            sub_val = auths.get(sub_key)
+            if isinstance(sub_val, str) and sub_val.strip():
+                return sub_val.strip()
+            if isinstance(sub_val, dict):
+                for k in ("token", "access_token", "oauth_token"):
+                    if isinstance(sub_val.get(k), str) and sub_val[k].strip():
+                        return sub_val[k].strip()
+
+    # 3. Dynamic scan for any user:* key or JWT-shaped string
+    for k, v in state.items():
+        if isinstance(v, str):
+            v_stripped = v.strip()
+            if (k.startswith("user:") or "token" in k or "auth" in k) and v_stripped:
+                if v_stripped.startswith("ey") and v_stripped.count(".") == 2:
+                    return v_stripped
+            elif v_stripped.startswith("ey") and v_stripped.count(".") == 2:
+                return v_stripped
+
+    return None
+
+
 async def authorize_and_bind_subagents(callback_context: CallbackContext) -> None:
     """ADK before_agent_callback: validates Entra ID OAuth token and dynamically binds authorized sub-agents.
 
@@ -61,11 +108,7 @@ async def authorize_and_bind_subagents(callback_context: CallbackContext) -> Non
     the authorized sub-agents to root_agent.sub_agents for this turn.
     """
     state = callback_context.state
-    token = (
-        state.get("oauth_token")
-        or state.get("user:entra_id_token")
-        or state.get("bearer_token")
-    )
+    token = extract_token_from_state(state)
 
     user_groups: list[str] = []
     if token:

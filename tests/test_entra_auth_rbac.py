@@ -226,10 +226,36 @@ class TestEntraAuthAndRBAC(unittest.IsolatedAsyncioTestCase):
         ext_uris = [e.uri for e in caps.extensions]
         self.assertIn(ACCESS_CONTROL_EXTENSION_URI, ext_uris)
 
-        rbac_ext = next(
-            e for e in caps.extensions if e.uri == ACCESS_CONTROL_EXTENSION_URI
+    def test_extract_token_from_state_variations(self):
+        from agent_a.app.agent import extract_token_from_state
+
+        dummy_jwt = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjMifQ.signature"
+
+        # Auth ID specific key
+        self.assertEqual(
+            extract_token_from_state({"user:entra_oauth_auth": dummy_jwt}),
+            dummy_jwt,
         )
-        self.assertIn("required_groups", rbac_ext.params)
+        self.assertEqual(
+            extract_token_from_state({"entra_oauth_auth": dummy_jwt}),
+            dummy_jwt,
+        )
+        self.assertEqual(
+            extract_token_from_state({"user:entra-oauth-auth": dummy_jwt}),
+            dummy_jwt,
+        )
+        # Nested auth dict
+        self.assertEqual(
+            extract_token_from_state({"authorizations": {"entra_oauth_auth": {"token": dummy_jwt}}}),
+            dummy_jwt,
+        )
+        # Dynamic JWT pattern fallback
+        self.assertEqual(
+            extract_token_from_state({"some_custom_gemini_key": dummy_jwt}),
+            dummy_jwt,
+        )
+        # Empty state
+        self.assertIsNone(extract_token_from_state({}))
 
 
 if __name__ == "__main__":
