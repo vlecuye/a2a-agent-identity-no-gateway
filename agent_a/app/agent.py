@@ -59,8 +59,10 @@ def extract_token_from_state(state: Any) -> str | None:
         return None
     state_dict = state.to_dict() if hasattr(state, "to_dict") else (dict(state) if isinstance(state, dict) else {})
 
-    # 1. Exact candidate keys (matching auth ID 'entra_oauth_auth' and common conventions)
+    # 1. Exact candidate keys (matching auth ID 'entra_oauth_auth' / 'entra_oauth_auth_v2' and common conventions)
     candidate_keys = (
+        "user:entra_oauth_auth_v2",
+        "entra_oauth_auth_v2",
         "user:entra_oauth_auth",
         "entra_oauth_auth",
         "user:entra-oauth-auth",
