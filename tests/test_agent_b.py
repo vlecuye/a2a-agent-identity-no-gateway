@@ -4,12 +4,18 @@ from agent_b.app.agent import calculate_formula, root_agent, app
 
 class TestAgentB(unittest.TestCase):
     def test_calculate_formula_basic_arithmetic(self):
-        result = calculate_formula("42 * 137 + 12")
-        self.assertEqual(result, str(42 * 137 + 12))
+        res = calculate_formula("42 * 137 + 12")
+        self.assertEqual(res["status"], "success")
+        self.assertEqual(res["result"], 42 * 137 + 12)
 
-    def test_calculate_formula_invalid_characters(self):
-        result = calculate_formula("import os")
-        self.assertIn("invalid characters", result)
+    def test_calculate_formula_advanced_math(self):
+        res = calculate_formula("sqrt(144) + 2 ** 3")
+        self.assertEqual(res["status"], "success")
+        self.assertEqual(res["result"], 20.0)
+
+    def test_calculate_formula_invalid_expression(self):
+        res = calculate_formula("__import__('os').system('ls')")
+        self.assertEqual(res["status"], "error")
 
     def test_agent_and_app_configuration(self):
         self.assertEqual(root_agent.name, "agent_b")
@@ -19,3 +25,4 @@ class TestAgentB(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
