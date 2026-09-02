@@ -65,14 +65,22 @@ async def _add_v0_3_compat_interface(card: AgentCard) -> AgentCard:
     return card
 
 
+ACCESS_CONTROL_EXTENSION_URI = "https://a2a.dev/extensions/access-control"
+
+
 def _default_capabilities() -> AgentCapabilities:
-    """Returns the default A2A capabilities used by scaffolded projects."""
+    """Returns the default A2A capabilities including RBAC access control."""
     return AgentCapabilities(
         streaming=True,
         extensions=[
             AgentExtension(
                 uri=_ADK_AGENT_EXECUTOR_EXTENSION_URI,
                 description=("Ability to use the new agent executor implementation"),
+            ),
+            AgentExtension(
+                uri=ACCESS_CONTROL_EXTENSION_URI,
+                description="Access control rules specifying required Entra ID groups",
+                params={"required_groups": ["math-users", "admin"]},
             ),
         ],
     )

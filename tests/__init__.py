@@ -13,6 +13,8 @@ def _ensure_mock_modules():
         "google.auth.transport.requests",
         "google.adk",
         "google.adk.agents",
+        "google.adk.agents.base_agent",
+        "google.adk.agents.callback_context",
         "google.adk.agents.remote_a2a_agent",
         "google.adk.apps",
         "google.adk.events",
@@ -33,20 +35,31 @@ def _ensure_mock_modules():
     ]
     for mod in modules_to_mock:
         if mod not in sys.modules:
-            sys.modules[mod] = MagicMock()
+            try:
+                __import__(mod)
+            except (ImportError, ModuleNotFoundError):
+                sys.modules[mod] = MagicMock()
 
     # Define minimal dummy classes for inheritance if needed
     class DummyGemini:
         def __init__(self, *args, **kwargs):
             self.model = kwargs.get("model", "gemini-3.7-flash")
 
-    class DummyAgent:
-        def __init__(self, name="", model=None, instruction="", tools=None, sub_agents=None, **kwargs):
+    class DummyBaseAgent:
+        pass
+
+    class DummyCallbackContext:
+        def __init__(self, state=None):
+            self.state = state if state is not None else {}
+
+    class DummyAgent(DummyBaseAgent):
+        def __init__(self, name="", model=None, instruction="", tools=None, sub_agents=None, before_agent_callback=None, **kwargs):
             self.name = name
             self.model = model
             self.instruction = instruction
             self.tools = tools or []
             self.sub_agents = sub_agents or []
+            self.before_agent_callback = before_agent_callback
 
     class DummyApp:
         def __init__(self, root_agent=None, name=""):
@@ -101,8 +114,10 @@ def _ensure_mock_modules():
         def __init__(self, request_interceptors=None):
             self.request_interceptors = request_interceptors or []
 
-    sys.modules["httpx"].Auth = DummyAuth
-    sys.modules["httpx"].Request = DummyRequest
+    if not hasattr(sys.modules.get("httpx"), "Auth"):
+        sys.modules["httpx"].Auth = DummyAuth
+    if not hasattr(sys.modules.get("httpx"), "Request"):
+        sys.modules["httpx"].Request = DummyRequest
     sys.modules["a2a.client"].ClientCallContext = DummyClientCallContext
     sys.modules["google.adk.agents.remote_a2a_agent"].ParametersConfig = DummyParametersConfig
     sys.modules["google.adk.agents.remote_a2a_agent"].RequestInterceptor = DummyRequestInterceptor
@@ -110,6 +125,10 @@ def _ensure_mock_modules():
     sys.modules["google.adk.models"].Gemini = DummyGemini
     sys.modules["google.adk.models.gemini"].Gemini = DummyGemini
     sys.modules["google.adk.agents"].Agent = DummyAgent
+    sys.modules["google.adk.agents"].BaseAgent = DummyBaseAgent
+    sys.modules["google.adk.agents.base_agent"].BaseAgent = DummyBaseAgent
+    sys.modules["google.adk.agents"].CallbackContext = DummyCallbackContext
+    sys.modules["google.adk.agents.callback_context"].CallbackContext = DummyCallbackContext
     sys.modules["google.adk.apps"].App = DummyApp
     sys.modules["google.adk.tools.agent_tool"].AgentTool = DummyAgentTool
     sys.modules["google.adk.agents.remote_a2a_agent"].RemoteA2aAgent = DummyRemoteA2aAgent

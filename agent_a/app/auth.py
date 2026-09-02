@@ -42,21 +42,27 @@ def mtls_context() -> ssl.SSLContext | None:
         logger.info("No client certificate in this environment; using bearer auth only.")
         return None
 
-    certs = MtlsClientCerts()
-    cert_path, key_path, passphrase = certs.get_certs()
-    if not (cert_path and key_path):
+    try:
+        certs = MtlsClientCerts()
+        cert_path, key_path, passphrase = certs.get_certs()
+        if not (cert_path and key_path):
+            logger.warning(
+                "mTLS is indicated but no client certificate could be extracted; "
+                "a certificate-bound token will be rejected by the ingress."
+            )
+            return None
+
+        context = ssl.create_default_context()
+        context.load_cert_chain(cert_path, key_path, passphrase)
+        certs.close()
+
+        logger.info("Presenting Agent Identity client certificate on outbound calls.")
+        return context
+    except Exception as e:
         logger.warning(
-            "mTLS is indicated but no client certificate could be extracted; "
-            "a certificate-bound token will be rejected by the ingress."
+            "mTLS certificate extraction failed (%s); falling back to standard TLS.", e
         )
         return None
-
-    context = ssl.create_default_context()
-    context.load_cert_chain(cert_path, key_path, passphrase)
-    certs.close()
-
-    logger.info("Presenting Agent Identity client certificate on outbound calls.")
-    return context
 
 
 class AdcAuth(httpx.Auth):

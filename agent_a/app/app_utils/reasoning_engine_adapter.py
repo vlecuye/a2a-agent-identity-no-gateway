@@ -80,7 +80,20 @@ def attach_reasoning_engine_routes(app: FastAPI) -> None:
     async def stream_query(request: Request) -> responses.StreamingResponse:
         body = await request.json()
         method = resolve_method(body["class_method"], streaming=True)
-        kwargs = body.get("input") or {}
+        kwargs = dict(body.get("input") or {})
+        auth_header = (
+            request.headers.get("authorization")
+            or request.headers.get("x-server-token")
+            or request.headers.get("x-forwarded-authorization")
+        )
+        if auth_header:
+            token_val = auth_header[7:].strip() if auth_header.lower().startswith("bearer ") else auth_header.strip()
+            session_state = kwargs.get("session_state")
+            if isinstance(session_state, dict):
+                session_state.setdefault("oauth_token", token_val)
+            elif session_state is None:
+                kwargs["session_state"] = {"oauth_token": token_val}
+
         stream = (
             await method(**kwargs)
             if inspect.iscoroutinefunction(method)
@@ -103,7 +116,20 @@ def attach_reasoning_engine_routes(app: FastAPI) -> None:
     async def query(request: Request) -> responses.JSONResponse:
         body = await request.json()
         method = resolve_method(body["class_method"], streaming=False)
-        kwargs = body.get("input") or {}
+        kwargs = dict(body.get("input") or {})
+        auth_header = (
+            request.headers.get("authorization")
+            or request.headers.get("x-server-token")
+            or request.headers.get("x-forwarded-authorization")
+        )
+        if auth_header:
+            token_val = auth_header[7:].strip() if auth_header.lower().startswith("bearer ") else auth_header.strip()
+            session_state = kwargs.get("session_state")
+            if isinstance(session_state, dict):
+                session_state.setdefault("oauth_token", token_val)
+            elif session_state is None:
+                kwargs["session_state"] = {"oauth_token": token_val}
+
         if inspect.iscoroutinefunction(method):
             output = await method(**kwargs)
         else:
