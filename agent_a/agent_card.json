@@ -1,0 +1,17 @@
+{
+  "name": "agent_a",
+  "displayName": "Agent A (Coordinator)",
+  "description": "Coordinator agent that receives user requests and orchestrates tasks with specialist sub-agents over the A2A protocol.",
+  "version": "1.0.0",
+  "protocolVersion": "1.0",
+  "capabilities": {
+    "streaming": true,
+    "tools": true
+  },
+  "skills": [
+    {
+      "name": "coordinator",
+      "description": "Orchestrates multi-step reasoning and sub-agent task delegation."
+    }
+  ]
+}

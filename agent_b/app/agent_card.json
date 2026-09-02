@@ -1,0 +1,17 @@
+{
+  "name": "agent_b",
+  "displayName": "Agent B (Calculator Specialist)",
+  "description": "Specialist agent performing arithmetic and mathematical computations via the A2A protocol.",
+  "version": "1.0.0",
+  "protocolVersion": "1.0",
+  "capabilities": {
+    "streaming": true,
+    "tools": true
+  },
+  "skills": [
+    {
+      "name": "calculate_formula",
+      "description": "Evaluates arithmetic and mathematical expressions."
+    }
+  ]
+}
