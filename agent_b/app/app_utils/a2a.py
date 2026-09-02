@@ -140,7 +140,7 @@ async def attach_a2a_routes(
     ).build()
 
     request_handler = DefaultRequestHandler(
-        agent_executor=A2aAgentExecutor(runner=runner, force_new_version=True),
+        agent_executor=A2aAgentExecutor(runner=runner),
         task_store=task_store,
         agent_card=agent_card,
     )

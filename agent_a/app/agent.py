@@ -6,7 +6,6 @@ over the A2A protocol using Agent Identity.
 
 from google.adk.agents import Agent
 from google.adk.apps import App
-from google.adk.tools.agent_tool import AgentTool
 
 from .auth import (
     AdcAuth,
@@ -26,11 +25,11 @@ root_agent = Agent(
     name="agent_a",
     model=GlobalGemini(model="gemini-3.7-flash"),
     instruction=(
-        "You are Agent A, a coordinator agent. When the user asks for math calculations, "
-        "evaluations, or data formulas, you must delegate the work to Agent B using the agent_b tool. "
+        "You are Agent A, a helpful coordinator agent. When the user asks for math calculations, "
+        "evaluations, or data formulas, delegate the work to agent_b. "
         "Summarize the result clearly and explain what Agent B computed."
     ),
-    tools=[AgentTool(agent=remote_agent_b)],
+    sub_agents=[remote_agent_b],
 )
 
 # Application entrypoint for ADK / Agent Runtime

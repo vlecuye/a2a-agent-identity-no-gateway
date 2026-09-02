@@ -16,9 +16,9 @@ class TestAgentA(unittest.TestCase):
     def test_agent_and_app_configuration(self):
         self.assertEqual(root_agent.name, "agent_a")
         self.assertEqual(app.name, "agent_a")
-        self.assertEqual(len(root_agent.tools), 1)
+        self.assertEqual(len(root_agent.sub_agents), 1)
 
-    def test_remote_a2a_tool(self):
+    def test_remote_a2a_agent(self):
         self.assertEqual(remote_agent_b.name, "agent_b")
         self.assertIn(".well-known/agent-card.json", remote_agent_b.agent_card)
 

@@ -41,11 +41,12 @@ def _ensure_mock_modules():
             self.model = kwargs.get("model", "gemini-3.7-flash")
 
     class DummyAgent:
-        def __init__(self, name="", model=None, instruction="", tools=None):
+        def __init__(self, name="", model=None, instruction="", tools=None, sub_agents=None, **kwargs):
             self.name = name
             self.model = model
             self.instruction = instruction
             self.tools = tools or []
+            self.sub_agents = sub_agents or []
 
     class DummyApp:
         def __init__(self, root_agent=None, name=""):
