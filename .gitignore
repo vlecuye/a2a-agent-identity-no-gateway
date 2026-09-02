@@ -36,3 +36,4 @@ venv.bak/
 *.swo
 *~
 .DS_Store
+.google-agents-cli/
